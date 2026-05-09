@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#050816" />
+  <title>Mobile Breakout</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #050816;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+      background: radial-gradient(circle at top, #1f2a64, #050816 58%);
+      color: white;
+    }
+    #wrap {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    }
+    canvas {
+      width: min(100vw - 20px, 430px);
+      height: min(100svh - 20px, 760px);
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 20px;
+      background: linear-gradient(#08122d, #050816);
+      box-shadow: 0 18px 60px rgba(0,0,0,.45);
+    }
+    #hint {
+      position: fixed;
+      left: 50%;
+      bottom: calc(18px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.45);
+      font-size: 12px;
+      color: rgba(255,255,255,.78);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="390" height="700" aria-label="Breakout game"></canvas>
+  </div>
+  <div id="hint">指で左右にドラッグ / タップで開始</div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const paddle = { x: W / 2 - 45, y: H - 72, w: 90, h: 14, r: 7 };
+    const ball = { x: W / 2, y: H - 95, r: 7, vx: 3.2, vy: -4.4 };
+
+    let score = 0;
+    let lives = 3;
+    let level = 1;
+    let paused = true;
+    let message = 'TAP TO START';
+    let bricks = [];
+
+    function makeBricks() {
+      bricks = [];
+      const rows = Math.min(4 + level, 8);
+      const cols = 7;
+      const gap = 7;
+      const margin = 18;
+      const bw = (W - margin * 2 - gap * (cols - 1)) / cols;
+      const bh = 22;
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          bricks.push({
+            x: margin + x * (bw + gap),
+            y: 92 + y * (bh + gap),
+            w: bw,
+            h: bh,
+            alive: true,
+            hue: 185 + y * 16
+          });
+        }
+      }
+    }
+
+    function resetBall() {
+      ball.x = paddle.x + paddle.w / 2;
+      ball.y = paddle.y - 20;
+      ball.vx = 3.0 + level * 0.18;
+      ball.vy = -(4.1 + level * 0.22);
+    }
+
+    function resetGame() {
+      score = 0;
+      lives = 3;
+      level = 1;
+      paddle.x = W / 2 - paddle.w / 2;
+      makeBricks();
+      resetBall();
+      paused = true;
+      message = 'TAP TO START';
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#0b1b45');
+      bg.addColorStop(1, '#050816');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.font = '700 17px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText(`SCORE ${score}`, 18, 38);
+      ctx.textAlign = 'right';
+      ctx.fillText(`LIFE ${lives}  LV ${level}`, W - 18, 38);
+      ctx.textAlign = 'left';
+
+      for (const b of bricks) {
+        if (!b.alive) continue;
+        const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+        grad.addColorStop(0, `hsl(${b.hue}, 95%, 68%)`);
+        grad.addColorStop(1, `hsl(${b.hue}, 95%, 42%)`);
+        ctx.fillStyle = grad;
+        roundRect(b.x, b.y, b.w, b.h, 6);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#ffb23e';
+      roundRect(paddle.x, paddle.y, paddle.w, paddle.h, paddle.r);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(255,255,255,.9)';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if (paused) {
+        ctx.fillStyle = 'rgba(0,0,0,.52)';
+        roundRect(55, H / 2 - 58, W - 110, 116, 18);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.font = '800 24px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(message, W / 2, H / 2 - 10);
+        ctx.font = '500 14px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Drag to move the paddle', W / 2, H / 2 + 22);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    function update() {
+      if (paused) return;
+
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      if (ball.x - ball.r < 0 || ball.x + ball.r > W) ball.vx *= -1;
+      if (ball.y - ball.r < 58) ball.vy *= -1;
+
+      if (
+        ball.x > paddle.x && ball.x < paddle.x + paddle.w &&
+        ball.y + ball.r > paddle.y && ball.y - ball.r < paddle.y + paddle.h &&
+        ball.vy > 0
+      ) {
+        const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+        ball.vx = hit * (5.2 + level * 0.2);
+        ball.vy = -Math.abs(ball.vy) * 1.015;
+        if (navigator.vibrate) navigator.vibrate(8);
+      }
+
+      for (const b of bricks) {
+        if (!b.alive) continue;
+        if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + b.w && ball.y + ball.r > b.y && ball.y - ball.r < b.y + b.h) {
+          b.alive = false;
+          score += 10 * level;
+          ball.vy *= -1;
+          if (navigator.vibrate) navigator.vibrate(5);
+          break;
+        }
+      }
+
+      if (bricks.every(b => !b.alive)) {
+        level += 1;
+        makeBricks();
+        resetBall();
+        paused = true;
+        message = `LEVEL ${level}`;
+      }
+
+      if (ball.y - ball.r > H) {
+        lives -= 1;
+        if (lives <= 0) {
+          paused = true;
+          message = 'GAME OVER';
+          setTimeout(resetGame, 900);
+        } else {
+          resetBall();
+          paused = true;
+          message = 'MISS';
+        }
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function pointerToCanvasX(event) {
+      const rect = canvas.getBoundingClientRect();
+      return (event.clientX - rect.left) * (canvas.width / rect.width);
+    }
+
+    function movePaddle(event) {
+      const x = pointerToCanvasX(event);
+      paddle.x = Math.max(8, Math.min(W - paddle.w - 8, x - paddle.w / 2));
+      if (paused && lives > 0) paused = false;
+    }
+
+    canvas.addEventListener('pointerdown', event => {
+      canvas.setPointerCapture(event.pointerId);
+      if (message === 'GAME OVER') resetGame();
+      movePaddle(event);
+    });
+    canvas.addEventListener('pointermove', movePaddle);
+    canvas.addEventListener('click', () => {
+      if (paused) paused = false;
+    });
+
+    document.addEventListener('gesturestart', event => event.preventDefault());
+    makeBricks();
+    resetBall();
+    loop();
+  </script>
+</body>
+</html>
